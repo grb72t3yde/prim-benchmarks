@@ -2,7 +2,7 @@ DPU_DIR := dpu
 HOST_DIR := host
 BUILDDIR ?= bin
 NR_TASKLETS ?= 16
-NR_DPUS ?= 1
+NR_DPUS ?= 1024
 PROBLEM_SIZE ?= 2
 
 define conf_filename

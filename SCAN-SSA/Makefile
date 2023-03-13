@@ -1,7 +1,7 @@
 DPU_DIR := dpu
 HOST_DIR := host
 BUILDDIR ?= bin
-NR_DPUS ?= 1
+NR_DPUS ?= 1024
 NR_TASKLETS ?= 16
 BL ?= 10
 TYPE ?= INT64

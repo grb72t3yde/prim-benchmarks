@@ -3,7 +3,7 @@ HOST_DIR := host
 BUILDDIR ?= bin
 NR_TASKLETS ?= 16
 BL ?= 10
-NR_DPUS ?= 1
+NR_DPUS ?= 1024
 ENERGY ?= 0
 
 define conf_filename
