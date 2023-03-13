@@ -58,14 +58,20 @@ int main(int argc, char **argv) {
 
     struct dpu_set_t dpu_set, dpu;
     uint32_t nr_of_dpus;
+    FILE *fp;
     
 #if ENERGY
     struct dpu_probe_t probe;
     DPU_ASSERT(dpu_probe_init("energy_probe", &probe));
 #endif
+    // Timer declaration
+    Timer timer;
 
+    start(&timer, 8, 0);
     // Allocate DPUs and load binary
-    DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpu_set));
+    start(&timer, 7, 0);
+    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 7);
     DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
     printf("Allocated %d DPU(s)\n", nr_of_dpus);
@@ -88,8 +94,6 @@ int main(int argc, char **argv) {
     // Create an input file with arbitrary data
     read_input(A, input_size, input_size_dpu_round * nr_of_dpus);
 
-    // Timer declaration
-    Timer timer;
 
     printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
 
@@ -242,6 +246,7 @@ int main(int argc, char **argv) {
         // Free memory
         free(results_scan);
     }
+    stop(&timer, 8);
 
     // Print timing results
     printf("CPU ");
@@ -257,6 +262,9 @@ int main(int argc, char **argv) {
     printf("DPU-CPU ");
     print(&timer, 5, p.n_reps);
 
+    fp = fopen("../ame_output.txt", "a");
+    fprintf(fp, "SCAN-RSS(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 7, 1), get(&timer, 8, 1));
+    fclose(fp);
     #if ENERGY
     double energy;
     DPU_ASSERT(dpu_probe_get(&probe, DPU_ENERGY, DPU_AVERAGE, &energy));

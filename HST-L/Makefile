@@ -3,7 +3,7 @@ HOST_DIR := host
 BUILDDIR ?= bin
 NR_TASKLETS ?= 16
 BL ?= 8
-NR_DPUS ?= 1
+NR_DPUS ?= 1024
 NR_HISTO ?= 1
 ENERGY ?= 0
 

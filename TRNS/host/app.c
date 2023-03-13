@@ -64,6 +64,7 @@ int main(int argc, char **argv) {
 
     struct dpu_set_t dpu_set, dpu;
     uint32_t nr_of_dpus;
+    FILE *fp;
     
 #if ENERGY
     struct dpu_probe_t probe;
@@ -91,6 +92,7 @@ int main(int argc, char **argv) {
     // Timer declaration
     Timer timer;
 
+    start(&timer, 8, 0);
     printf("NR_TASKLETS\t%d\n", NR_TASKLETS);
     printf("M_\t%u, m\t%u, N_\t%u, n\t%u\n", M_, m, N_, n);
 
@@ -120,12 +122,14 @@ int main(int argc, char **argv) {
             }
             if((active_dpus_before != active_dpus) && (!(first_round))){
                 DPU_ASSERT(dpu_free(dpu_set));
-                DPU_ASSERT(dpu_alloc(active_dpus, NULL, &dpu_set));
+                DPU_ASSERT(dpu_alloc_direct_reclaim(active_dpus, NULL, &dpu_set));
                 DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
                 DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
                 printf("Allocated %d DPU(s)\n", nr_of_dpus);
             } else if (first_round){
-                DPU_ASSERT(dpu_alloc(active_dpus, NULL, &dpu_set));
+                start(&timer, 7, 0);
+                DPU_ASSERT(dpu_alloc_direct_reclaim(active_dpus, NULL, &dpu_set));
+                stop(&timer, 0);
                 DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
                 DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
                 printf("Allocated %d DPU(s)\n", nr_of_dpus);
@@ -236,6 +240,7 @@ int main(int argc, char **argv) {
         DPU_ASSERT(dpu_free(dpu_set));
 
     }
+    stop(&timer, 8);
 
     // Print timing results
     printf("CPU ");
@@ -249,6 +254,9 @@ int main(int argc, char **argv) {
     printf("DPU-CPU ");
     print(&timer, 4, p.n_reps);
 
+    fp = fopen("../ame_output.txt", "a");
+    fprintf(fp, "TRNS(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 4, 1), get(&timer, 5, 1));
+    fclose(fp);
     #if ENERGY
     double energy;
     DPU_ASSERT(dpu_probe_get(&probe, DPU_ENERGY, DPU_AVERAGE, &energy));

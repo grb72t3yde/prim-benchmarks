@@ -75,12 +75,16 @@ int main(int argc, char **argv) {
 	uint64_t num_querys = p.num_querys;
 	DTYPE result_host = -1;
 	DTYPE result_dpu  = -1;
+    FILE *fp;
 
 	// Create the timer
 	Timer timer;
 
+	start(&timer, 5, 0);
 	// Allocate DPUs and load binary
-	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpu_set));
+	start(&timer, 4, 0);
+	DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 4);
 	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
 	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
 
@@ -202,6 +206,7 @@ int main(int argc, char **argv) {
 		if(rep >= p.n_warmup)
 		stop(&timer, 3);
 	}
+    stop(&timer, 5);
 	// Print timing results
 	printf("CPU Version Time (ms): ");
 	print(&timer, 0, p.n_reps);
@@ -212,6 +217,9 @@ int main(int argc, char **argv) {
 	printf("DPU-CPU Time (ms): ");
 	print(&timer, 3, p.n_reps);
 
+    fp = fopen("../ame_output.txt", "a");
+    fprintf(fp, "BS(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 4, 1), get(&timer, 5, 1));
+    fclose(fp);
 	#if ENERGY
 	double energy;
 	DPU_ASSERT(dpu_probe_get(&probe, DPU_ENERGY, DPU_AVERAGE, &energy));
