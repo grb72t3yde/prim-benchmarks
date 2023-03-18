@@ -21,6 +21,8 @@ typedef struct {
 #define BL BLOCK_SIZE_LOG2
 #endif
 
+#define NR_DPUS_PER_RANK 64
+
 // Data type
 #ifdef UINT32
 #define T uint32_t
@@ -47,6 +49,13 @@ typedef struct {
 #define T short
 #define DIV 1 // Shift right to divide by sizeof(T)
 #endif
+
+typedef struct {
+    dpu_arguments_t *input_arguments;
+    T* bufferA;
+    T* bufferB;
+    unsigned int input_size_dpu_8bytes;
+} cb_arguments_t;
 
 #ifndef ENERGY
 #define ENERGY 0

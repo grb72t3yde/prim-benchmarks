@@ -32,6 +32,48 @@ static T* B;
 static T* C;
 static T* C2;
 
+void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
+{
+    unsigned int i = 0;
+    struct dpu_set_t dpu;
+    cb_arguments_t *cb_arguments = (cb_arguments_t *)cb_args;
+
+    dpu_arguments_t *input_arguments = cb_arguments->input_arguments;
+    const unsigned int input_size_dpu_8bytes = cb_arguments->input_size_dpu_8bytes;
+
+    T *bufferA = cb_arguments->bufferA;
+    T *bufferB = cb_arguments->bufferB;
+    static uint32_t nr_acc_alloc_dpus = 0;
+    static struct dpu_program_t *program = NULL;
+    static uint32_t acc_nr_of_dpus = 0;
+    uint32_t nr_of_dpus = 0;
+
+    if (program)
+        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+    else
+        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+
+    // input arguments
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments[i + acc_nr_of_dpus]));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments[0]), DPU_XFER_ASYNC));
+
+    // bufferA
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferA + input_size_dpu_8bytes * (i + nr_acc_alloc_dpus)));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+
+    // bufferB
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferB + input_size_dpu_8bytes * (i + nr_acc_alloc_dpus)));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size_dpu_8bytes * sizeof(T), input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+
+    acc_nr_of_dpus += nr_of_dpus;
+}
+
 // Create input arrays
 static void read_input(T* A, T* B, unsigned int nr_elements) {
     srand(0);
@@ -67,13 +109,10 @@ int main(int argc, char **argv) {
 #endif
     start(&timer, 5, 0);
     // Allocate DPUs and load binary
-    start(&timer, 4, 0);
-    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
-    stop(&timer, 4);
-    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
-    printf("Allocated %d DPU(s)\n", nr_of_dpus);
+    //DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    //DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
     unsigned int i = 0;
+    nr_of_dpus = NR_DPUS;
 
     const unsigned int input_size = p.exp == 0 ? p.input_size * nr_of_dpus : p.input_size; // Total input size (weak or strong scaling)
     const unsigned int input_size_8bytes = 
@@ -94,7 +133,30 @@ int main(int argc, char **argv) {
     // Create an input file with arbitrary data
     read_input(A, B, input_size);
 
+    // Input arguments
+    unsigned int kernel = 0;
+    dpu_arguments_t input_arguments[NR_DPUS];
+    for(i=0; i<nr_of_dpus-1; i++) {
+        input_arguments[i].size=input_size_dpu_8bytes * sizeof(T); 
+        input_arguments[i].transfer_size=input_size_dpu_8bytes * sizeof(T); 
+        input_arguments[i].kernel=kernel;
+    }
+    input_arguments[nr_of_dpus-1].size=(input_size_8bytes - input_size_dpu_8bytes * (NR_DPUS-1)) * sizeof(T); 
+    input_arguments[nr_of_dpus-1].transfer_size=input_size_dpu_8bytes * sizeof(T); 
+    input_arguments[nr_of_dpus-1].kernel=kernel;
 
+    // AME cb args
+    cb_arguments_t cb_args;
+    cb_args.input_arguments = input_arguments;
+    cb_args.input_size_dpu_8bytes = input_size_dpu_8bytes;
+    cb_args.bufferA = bufferA;
+    cb_args.bufferB = bufferB;
+
+    start(&timer, 4, 0);
+    DPU_ASSERT(dpu_alloc_ranks_async(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
+    stop(&timer, 4);
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    printf("Allocated %d DPU(s)\n", nr_of_dpus);
     printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
 
     // Loop over main kernel
@@ -110,34 +172,26 @@ int main(int argc, char **argv) {
         printf("Load input data\n");
         if(rep >= p.n_warmup)
             start(&timer, 1, rep - p.n_warmup);
-        // Input arguments
-        unsigned int kernel = 0;
-        dpu_arguments_t input_arguments[NR_DPUS];
-        for(i=0; i<nr_of_dpus-1; i++) {
-            input_arguments[i].size=input_size_dpu_8bytes * sizeof(T); 
-            input_arguments[i].transfer_size=input_size_dpu_8bytes * sizeof(T); 
-            input_arguments[i].kernel=kernel;
-        }
-        input_arguments[nr_of_dpus-1].size=(input_size_8bytes - input_size_dpu_8bytes * (NR_DPUS-1)) * sizeof(T); 
-        input_arguments[nr_of_dpus-1].transfer_size=input_size_dpu_8bytes * sizeof(T); 
-        input_arguments[nr_of_dpus-1].kernel=kernel;
 
         // Copy input arrays
-        i = 0;
-        DPU_FOREACH(dpu_set, dpu, i) {
-            DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments[i]));
-        }
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments[0]), DPU_XFER_DEFAULT));
+        // For AME async reclamation, we ignore the first copy
+        if (rep != 0) {
+            i = 0;
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments[i]));
+            }
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments[0]), DPU_XFER_DEFAULT));
 
-        DPU_FOREACH(dpu_set, dpu, i) {
-            DPU_ASSERT(dpu_prepare_xfer(dpu, bufferA + input_size_dpu_8bytes * i));
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferA + input_size_dpu_8bytes * i));
+            }
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+     
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferB + input_size_dpu_8bytes * i));
+            }
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size_dpu_8bytes * sizeof(T), input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
         }
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
- 
-        DPU_FOREACH(dpu_set, dpu, i) {
-            DPU_ASSERT(dpu_prepare_xfer(dpu, bufferB + input_size_dpu_8bytes * i));
-        }
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size_dpu_8bytes * sizeof(T), input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
         if(rep >= p.n_warmup)
             stop(&timer, 1);
 
@@ -182,9 +236,7 @@ int main(int argc, char **argv) {
             stop(&timer, 3);
 
     }
-    printf("OK1\n");
     stop(&timer, 5);
-    printf("OK2\n");
 
     // Print timing results
     printf("CPU ");

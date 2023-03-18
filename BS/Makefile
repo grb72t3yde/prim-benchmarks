@@ -14,7 +14,7 @@ COMMON_INCLUDES := support
 HOST_TARGET := ${BUILDDIR}/bs_host
 DPU_TARGET := ${BUILDDIR}/bs_dpu
 
-HOST_SOURCES := $(wildcard ${HOST_DIR}/*.c)
+HOST_SOURCES := $(wildcard ${HOST_DIR}/app.c)
 DPU_SOURCES := $(wildcard ${DPU_DIR}/*.c)
 
 .PHONY: all clean test

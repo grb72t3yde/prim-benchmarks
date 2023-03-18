@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
         free(offset_scan);
 
     }
-    stop(&timer, 7);
+    stop(&timer, 8);
 
     // Print timing results
     printf("CPU ");
