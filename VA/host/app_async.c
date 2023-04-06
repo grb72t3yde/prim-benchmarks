@@ -165,7 +165,9 @@ int main(int argc, char **argv) {
         // Compute output on CPU (performance comparison and verification purposes)
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup);
+#if VERIFY_WITH_CPU
         vector_addition_host(C, A, B, input_size);
+#endif
         if(rep >= p.n_warmup)
             stop(&timer, 0);
 
@@ -260,6 +262,7 @@ int main(int argc, char **argv) {
 
     // Check output
     bool status = true;
+#if VERIFY_WITH_CPU
     for (i = 0; i < input_size; i++) {
         if(C[i] != bufferC[i]){ 
             status = false;
@@ -273,6 +276,7 @@ int main(int argc, char **argv) {
     } else {
         printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] Outputs differ!\n");
     }
+#endif
 
     // Deallocation
     free(A);

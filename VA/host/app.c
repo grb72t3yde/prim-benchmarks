@@ -66,14 +66,9 @@ int main(int argc, char **argv) {
     DPU_ASSERT(dpu_probe_init("energy_probe", &probe));
 #endif
     start(&timer, 5, 0);
-    // Allocate DPUs and load binary
-    start(&timer, 4, 0);
-    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
-    stop(&timer, 4);
-    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
-    printf("Allocated %d DPU(s)\n", nr_of_dpus);
+    
     unsigned int i = 0;
+    nr_of_dpus = NR_DPUS;
 
     const unsigned int input_size = p.exp == 0 ? p.input_size * nr_of_dpus : p.input_size; // Total input size (weak or strong scaling)
     const unsigned int input_size_8bytes = 
@@ -94,8 +89,15 @@ int main(int argc, char **argv) {
     // Create an input file with arbitrary data
     read_input(A, B, input_size);
 
-
     printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
+
+    // Allocate DPUs and load binary
+    start(&timer, 4, 0);
+    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 4);
+    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    printf("Allocated %d DPU(s)\n", nr_of_dpus);
 
     // Loop over main kernel
     for(int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
@@ -103,7 +105,9 @@ int main(int argc, char **argv) {
         // Compute output on CPU (performance comparison and verification purposes)
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup);
+#if VERIFY_WITH_CPU
         vector_addition_host(C, A, B, input_size);
+#endif
         if(rep >= p.n_warmup)
             stop(&timer, 0);
 
@@ -182,9 +186,7 @@ int main(int argc, char **argv) {
             stop(&timer, 3);
 
     }
-    printf("OK1\n");
     stop(&timer, 5);
-    printf("OK2\n");
 
     // Print timing results
     printf("CPU ");
@@ -208,6 +210,7 @@ int main(int argc, char **argv) {
 
     // Check output
     bool status = true;
+#if VERIFY_WITH_CPU
     for (i = 0; i < input_size; i++) {
         if(C[i] != bufferC[i]){ 
             status = false;
@@ -221,6 +224,7 @@ int main(int argc, char **argv) {
     } else {
         printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] Outputs differ!\n");
     }
+#endif
 
     // Deallocation
     free(A);
