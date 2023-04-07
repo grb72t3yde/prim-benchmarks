@@ -45,7 +45,6 @@ void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
     T *bufferB = cb_arguments->bufferB;
     static uint32_t nr_acc_alloc_dpus = 0;
     static struct dpu_program_t *program = NULL;
-    static uint32_t acc_nr_of_dpus = 0;
     uint32_t nr_of_dpus = 0;
 
     if (program)
@@ -55,7 +54,7 @@ void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
 
     // input arguments
     DPU_FOREACH(dpu_set, dpu, i) {
-        DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments[i + acc_nr_of_dpus]));
+        DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments[i + nr_acc_alloc_dpus]));
     }
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments[0]), DPU_XFER_ASYNC));
 
@@ -71,7 +70,8 @@ void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
     }
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size_dpu_8bytes * sizeof(T), input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
 
-    acc_nr_of_dpus += nr_of_dpus;
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    nr_acc_alloc_dpus += nr_of_dpus;
 }
 
 // Create input arrays

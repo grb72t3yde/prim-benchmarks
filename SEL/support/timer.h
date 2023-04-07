@@ -37,9 +37,9 @@
 
 typedef struct Timer{
 
-    struct timeval startTime[9];
-    struct timeval stopTime[9];
-    double         time[9];
+    struct timeval startTime[8];
+    struct timeval stopTime[8];
+    double         time[8];
 
 }Timer;
 
