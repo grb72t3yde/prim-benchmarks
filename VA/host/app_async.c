@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
     double other_time = get(&timer, 5, 1) - reclamation_time;
 
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "UNI(%u): Reclamation time: %f (ms); Other exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time);
+    fprintf(fp, "VA(%u): Reclamation time: %f (ms); Other exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time);
     fclose(fp);
     
 #if ENERGY
