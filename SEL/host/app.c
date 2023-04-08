@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     DPU_ASSERT(dpu_probe_init("energy_probe", &probe));
 #endif
 
-    start(&timer, 7, 0);
+    start(&timer, 6, 0);
     unsigned int i = 0;
     uint32_t accum = 0;
     uint32_t total_count = 0;
@@ -96,9 +96,9 @@ int main(int argc, char **argv) {
     printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
 
     // Allocate DPUs and load binary
-    start(&timer, 6, 0);
+    start(&timer, 5, 0);
     DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
-    stop(&timer, 6);
+    stop(&timer, 5);
     DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
     printf("Allocated %d DPU(s)\n", nr_of_dpus);
@@ -215,7 +215,7 @@ int main(int argc, char **argv) {
         // Free memory
         free(results_scan);
     }
-    stop(&timer, 7);
+    stop(&timer, 6);
 
     // Print timing results
     printf("CPU ");
@@ -229,8 +229,11 @@ int main(int argc, char **argv) {
     printf("DPU-CPU ");
     print(&timer, 4, p.n_reps);
 
+    double reclamation_time = get(&timer, 5, 1);
+    double other_time = get(&timer, 6, 1) - reclamation_time;
+
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "SEL(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 6, 1), get(&timer, 7, 1));
+    fprintf(fp, "UNI(%u): Reclamation time: %f (ms); Other exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time);
     fclose(fp);
 
     #if ENERGY

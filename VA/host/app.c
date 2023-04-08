@@ -198,8 +198,11 @@ int main(int argc, char **argv) {
     printf("DPU-CPU ");
     print(&timer, 3, p.n_reps);
 
+    double reclamation_time = get(&timer, 4, 1);
+    double other_time = get(&timer, 5, 1) - reclamation_time;
+
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "VA(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 4, 1), get(&timer, 5, 1));
+    fprintf(fp, "UNI(%u): Reclamation time: %f (ms); Other exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time);
     fclose(fp);
     
 #if ENERGY

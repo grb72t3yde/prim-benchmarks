@@ -27,7 +27,6 @@ typedef struct {
 // Data type
 #define T uint64_t
 #define REGS (BLOCK_SIZE >> 3) // 64 bits
-
 #define NR_DPUS_PER_RANK 64
 
 // Sample predicate
