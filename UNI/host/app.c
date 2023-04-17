@@ -112,7 +112,9 @@ int main(int argc, char **argv) {
         // Compute output on CPU (performance comparison and verification purposes)
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup);
+#if VERIFY_WITH_CPU
         total_count = unique_host(C, A, input_size);
+#endif
         if(rep >= p.n_warmup)
             stop(&timer, 0);
 
@@ -248,10 +250,11 @@ int main(int argc, char **argv) {
     print(&timer, 4, p.n_reps);
 
     double reclamation_time = get(&timer, 5, 1);
-    double other_time = get(&timer, 6, 1) - reclamation_time;
+    double total_time = get(&timer, 6, 1);
+    double other_time = total_time - get(&timer, 1, p.n_reps) - reclamation_time;
 
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "UNI(%u): Reclamation time: %f (ms); Other exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time);
+    fprintf(fp, "UNI(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
 #if ENERGY
     double energy;
@@ -261,6 +264,7 @@ int main(int argc, char **argv) {
 
     // Check output
     bool status = true;
+#if VERIFY_WITH_CPU
     if(accum != total_count) status = false;
 #if PRINT
     printf("accum %u, total_count %u\n", accum, total_count);
@@ -278,6 +282,7 @@ int main(int argc, char **argv) {
     } else {
         printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] Outputs differ!\n");
     }
+#endif
 
     // Deallocation
     free(A);

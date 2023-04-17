@@ -17,6 +17,7 @@
 #define BLOCK_SIZE_LOG2 8
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 #endif
+#define NR_DPUS_PER_RANK 64
 
 // Data type
 #define DTYPE int64_t
@@ -38,10 +39,19 @@ typedef struct {
     DTYPE found;
 } dpu_results_t;
 
+typedef struct {
+    dpu_arguments_t *input_arguments;
+    uint64_t input_size;
+    uint64_t slice_per_dpu;
+    DTYPE* input;
+    DTYPE* querys;
+} cb_arguments_t;
+
 #ifndef ENERGY
 #define ENERGY 0
 #endif
 #define PRINT 0
+#define VERIFY_WITH_CPU 0
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

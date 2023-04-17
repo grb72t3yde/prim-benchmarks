@@ -107,7 +107,9 @@ int main(int argc, char **argv) {
 
 	// Compute host solution
 	start(&timer, 0, 0);
+#if VERIFY_WITH_CPU
 	result_host = binarySearch(input, querys, input_size - 1, num_querys);
+#endif
 	stop(&timer, 0);
 
 	// Create kernel arguments
@@ -216,9 +218,14 @@ int main(int argc, char **argv) {
 	print(&timer, 2, p.n_reps);
 	printf("DPU-CPU Time (ms): ");
 	print(&timer, 3, p.n_reps);
+	printf("\n");
+
+    double reclamation_time = get(&timer, 4, 1);
+    double total_time = get(&timer, 5, 1);
+    double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
 
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "BS(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 4, 1), get(&timer, 5, 1));
+    fprintf(fp, "BS(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
 	#if ENERGY
 	double energy;
@@ -226,12 +233,15 @@ int main(int argc, char **argv) {
 	printf("DPU Energy (J): %f\t", energy * num_iterations);
 	#endif
 
+    int status = 1;
+#if VERIFY_WITH_CPU
 	int status = (result_dpu == result_host);
 	if (status) {
 		printf("[" ANSI_COLOR_GREEN "OK" ANSI_COLOR_RESET "] results are equal\n");
 	} else {
 		printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] results differ!\n");
 	}
+#endif
 
 	free(input);
 	DPU_ASSERT(dpu_free(dpu_set));

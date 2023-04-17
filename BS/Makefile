@@ -13,8 +13,11 @@ CONF := $(call conf_filename,${NR_DPUS},${NR_TASKLETS})
 COMMON_INCLUDES := support
 HOST_TARGET := ${BUILDDIR}/bs_host
 DPU_TARGET := ${BUILDDIR}/bs_dpu
-
+ifeq ($(MODE), ASYNC)
+HOST_SOURCES := $(wildcard ${HOST_DIR}/app_async.c)
+else
 HOST_SOURCES := $(wildcard ${HOST_DIR}/app.c)
+endif
 DPU_SOURCES := $(wildcard ${DPU_DIR}/*.c)
 
 .PHONY: all clean test
