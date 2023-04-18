@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
 
 	struct Params p = input_params(argc, argv);
 	struct dpu_set_t dpu_set, dpu;
-	uint32_t nr_of_dpus;
+	uint32_t nr_of_dpus = NR_DPUS;
 	uint64_t input_size = INPUT_SIZE;
 	uint64_t num_querys = p.num_querys;
 	DTYPE result_host = -1;
@@ -80,14 +80,8 @@ int main(int argc, char **argv) {
 	// Create the timer
 	Timer timer;
 
-	start(&timer, 5, 0);
-	// Allocate DPUs and load binary
-	start(&timer, 4, 0);
-	DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
-    stop(&timer, 4);
-	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
-
+	
+    start(&timer, 5, 0);
 	#if ENERGY
 	struct dpu_probe_t probe;
 	DPU_ASSERT(dpu_probe_init("energy_probe", &probe));
@@ -115,6 +109,13 @@ int main(int argc, char **argv) {
 	// Create kernel arguments
 	uint64_t slice_per_dpu          = num_querys / nr_of_dpus;
 	dpu_arguments_t input_arguments = {input_size, slice_per_dpu, 0};
+
+	// Allocate DPUs and load binary
+	start(&timer, 4, 0);
+	DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 4);
+	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
 
 	for (unsigned int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 		// Perform input transfers
