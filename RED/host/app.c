@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     struct Params p = input_params(argc, argv);
 
     struct dpu_set_t dpu_set, dpu;
-    uint32_t nr_of_dpus;
+    uint32_t nr_of_dpus = NR_DPUS;
     FILE *fp;
     
 #if ENERGY
@@ -64,14 +64,7 @@ int main(int argc, char **argv) {
     Timer timer;
 
     start(&timer, 5, 0);
-    // Allocate DPUs and load binary
-    start(&timer, 4, 0);
-    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
-    stop(&timer, 4);
-    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
-    printf("Allocated %d DPU(s)\n", nr_of_dpus);
-
+    
     unsigned int i = 0;
 #if PERF
     double cc = 0;
@@ -94,6 +87,13 @@ int main(int argc, char **argv) {
     // Create an input file with arbitrary data
     read_input(A, input_size);
 
+    // Allocate DPUs and load binary
+    start(&timer, 4, 0);
+    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 4);
+    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    printf("Allocated %d DPU(s)\n", nr_of_dpus);
 
     printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
 
@@ -103,7 +103,9 @@ int main(int argc, char **argv) {
         // Compute output on CPU (performance comparison and verification purposes)
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup);
+#if VERIFY_WITH_CPU
         count_host = reduction_host(A, input_size);
+#endif
         if(rep >= p.n_warmup)
             stop(&timer, 0);
 
@@ -243,8 +245,11 @@ int main(int argc, char **argv) {
     printf("Inter-DPU ");
     print(&timer, 3, p.n_reps);
 
+    double reclamation_time = get(&timer, 4, 1);
+    double total_time = get(&timer, 5, 1);
+    double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "RED(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 4, 1), get(&timer, 5, 1));
+    fprintf(fp, "RED(%u): Reclamation time: %f (ms); Other exe. time %f (ms); Total time: %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
     #if ENERGY
     double energy;
@@ -254,12 +259,14 @@ int main(int argc, char **argv) {
 
     // Check output
     bool status = true;
+#if VERIFY_WITH_CPU
     if(count != count_host) status = false;
     if (status) {
         printf("[" ANSI_COLOR_GREEN "OK" ANSI_COLOR_RESET "] Outputs are equal\n");
     } else {
         printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] Outputs differ!\n");
     }
+#endif
 
     // Deallocation
     free(A);

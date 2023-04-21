@@ -10,6 +10,7 @@
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 #define BL BLOCK_SIZE_LOG2
 #endif
+#define NR_DPUS_PER_RANK 64
 
 // Data type
 #ifdef UINT32
@@ -53,6 +54,12 @@ typedef struct {
     T t_count;
 } dpu_results_t;
 
+typedef struct {
+    dpu_arguments_t *input_arguments;
+    T* bufferA;
+    unsigned int input_size_dpu_8bytes;
+} cb_arguments_t;
+
 #ifndef PERF
 #define PERF 0 // Use perfcounters?
 #endif
@@ -63,6 +70,7 @@ typedef struct {
 #define ENERGY 0
 #endif
 #define PRINT 0 
+#define VERIFY_WITH_CPU 0
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
