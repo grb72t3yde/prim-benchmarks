@@ -315,7 +315,7 @@ int main(int argc, char **argv) {
     double total_time = get(&timer, 8, 1);
     double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "TS(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
+    fprintf(fp, "SCAN-RSS(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
 
     #if ENERGY
