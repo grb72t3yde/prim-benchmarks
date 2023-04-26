@@ -13,6 +13,7 @@
 // Data type
 #define DTYPE int32_t
 #define DTYPE_MAX INT32_MAX
+#define NR_DPUS_PER_RANK 64
 
 typedef struct  {
 	uint32_t ts_length;
@@ -34,10 +35,19 @@ typedef struct  {
     uint32_t maxIndex;
 }dpu_result_t;
 
+typedef struct {
+    dpu_arguments_t *input_arguments;
+    DTYPE* bufferTS;
+    DTYPE* bufferQ;
+    DTYPE* bufferAMean;
+    DTYPE* bufferASigma;
+} cb_arguments_t;
+
 #ifndef ENERGY
 #define ENERGY 0
 #endif
 #define PRINT 0 
+#define VERIFY_WITH_CPU 1
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

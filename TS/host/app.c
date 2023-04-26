@@ -122,15 +122,12 @@ int main(int argc, char **argv) {
 
 	// Timer declaration
 	Timer timer;
+    FILE *fp = NULL;
 
+    start(&timer, 6, 1);
 	struct Params p = input_params(argc, argv);
 	struct dpu_set_t dpu_set, dpu;
-	uint32_t nr_of_dpus;
-
-	// Allocate DPUs and load binary
-	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpu_set));
-	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+	uint32_t nr_of_dpus = NR_DPUS;
 
 #if ENERGY
 	struct dpu_probe_t probe;
@@ -181,6 +178,13 @@ int main(int argc, char **argv) {
 	result.minIndex = 0;
 	result.maxValue = 0;
 	result.maxIndex = 0;
+
+	// Allocate DPUs and load binary
+    start(&timer, 5, 1);
+	DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 5);
+	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
 
 	for (int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 
@@ -296,7 +300,9 @@ int main(int argc, char **argv) {
 
 		if (rep >= p.n_warmup)
 			start(&timer, 4, rep - p.n_warmup);
+#if VERIFY_WITH_CPU
 		streamp(tSeries, AMean, ASigma, ts_size - query_length - 1, query, query_length, query_mean, query_std);
+#endif
 		if(rep >= p.n_warmup)
 			stop(&timer, 4);
 	}
@@ -308,6 +314,7 @@ int main(int argc, char **argv) {
 	DPU_ASSERT(dpu_probe_get(&probe, DPU_TIME, DPU_ACCUMULATE, &acc_time));
 	DPU_ASSERT(dpu_probe_get(&probe, DPU_TIME, DPU_AVERAGE, &avg_time));
 #endif
+    stop(&timer, 6);
 
 	// Print timing results
 	printf("CPU Version Time (ms): ");
@@ -321,16 +328,25 @@ int main(int argc, char **argv) {
 	printf("DPU-CPU Time (ms): ");
 	print(&timer, 3, p.n_reps);
 
+    double reclamation_time = get(&timer, 5, 1);
+    double total_time = get(&timer, 6, 1);
+    double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
+    fp = fopen("../ame_output.txt", "a");
+    fprintf(fp, "TS(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
+    fclose(fp);
+
 #if ENERGY
 	printf("Energy (J): %f J\t", avg_energy);
 #endif
 
+#if VERIFY_WITH_CPU
 	int status = (minHost == result.minValue);
 	if (status) {
 		printf("[" ANSI_COLOR_GREEN "OK" ANSI_COLOR_RESET "] results are equal\n");
 	} else {
 		printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] results differ!\n");
 	}
+#endif
 
 	DPU_ASSERT(dpu_free(dpu_set));
 
