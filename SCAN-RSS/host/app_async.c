@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
         // Compute output on CPU (performance comparison and verification purposes)
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup);
-#if VERITY_WITH_CPU
+#if VERIFY_WITH_CPU
         scan_host(C, A, input_size);
 #endif
         if(rep >= p.n_warmup)
@@ -327,7 +327,7 @@ int main(int argc, char **argv) {
 
     // Check output
     bool status = true;
-#if VERITY_WITH_CPU
+#if VERIFY_WITH_CPU
     for (i = 0; i < input_size; i++) {
         if(C[i] != bufferC[i]){ 
             status = false;
