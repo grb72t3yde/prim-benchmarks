@@ -14,7 +14,11 @@ HOST_TARGET := ${BUILDDIR}/host_code
 DPU_TARGET := ${BUILDDIR}/dpu_code
 
 COMMON_INCLUDES := support
-HOST_SOURCES := $(wildcard ${HOST_DIR}/*.c)
+ifeq ($(MODE), ASYNC)
+HOST_SOURCES := $(wildcard ${HOST_DIR}/app_async.c)
+else
+HOST_SOURCES := $(wildcard ${HOST_DIR}/app.c)
+endif
 DPU_SOURCES := $(wildcard ${DPU_DIR}/*.c)
 
 .PHONY: all clean test
