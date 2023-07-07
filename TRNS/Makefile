@@ -14,8 +14,8 @@ HOST_TARGET := ${BUILDDIR}/host_code
 DPU_TARGET := ${BUILDDIR}/dpu_code
 
 COMMON_INCLUDES := support
-ifeq ($(MODE), ASYNC)
-HOST_SOURCES := $(wildcard ${HOST_DIR}/app_async.c)
+ifeq ($(MODE), DMP)
+HOST_SOURCES := $(wildcard ${HOST_DIR}/app_dmp.c)
 else
 HOST_SOURCES := $(wildcard ${HOST_DIR}/app.c)
 endif
