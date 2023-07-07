@@ -148,7 +148,9 @@ int main(int argc, char **argv) {
 
         int timer_fix = 0;
         // Compute output on CPU (performance comparison and verification purposes)
+#if VERIFY_WITH_CPU
         memcpy(A_host, A_backup, M_ * m * N_ * n * sizeof(T));
+#endif
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup + timer_fix);
 #if VERIFY_WITH_CPU
@@ -178,7 +180,7 @@ int main(int argc, char **argv) {
             } else if (first_round){
                 start(&timer, 7, 0);
                 DPU_ASSERT(dpu_alloc_ranks_async(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
-                stop(&timer, 0);
+                stop(&timer, 7);
                 DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
                 printf("Allocated %d DPU(s)\n", nr_of_dpus);
             }

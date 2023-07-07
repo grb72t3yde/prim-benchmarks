@@ -1,6 +1,16 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+// Structures used by both the host and the dpu to communicate information
+typedef struct {
+    uint32_t size;
+    uint32_t transfer_size;
+	enum kernels {
+	    kernel1 = 0,
+	    nr_kernels = 1,
+	} kernel;
+} dpu_arguments_t;
+
 // Transfer size between MRAM and WRAM
 #ifdef BL
 #define BLOCK_SIZE_LOG2 BL
@@ -10,6 +20,8 @@
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 #define BL BLOCK_SIZE_LOG2
 #endif
+
+#define NR_DPUS_PER_RANK 64
 
 // Data type
 #ifdef UINT32
@@ -38,28 +50,11 @@
 #define DIV 1 // Shift right to divide by sizeof(T)
 #endif
 
-#define REGS (BLOCK_SIZE >> DIV)
-#define NR_DPUS_PER_RANK 64
-
-// Structures used by both the host and the dpu to communicate information 
-typedef struct {
-    uint32_t size;
-	enum kernels {
-	    kernel1 = 0,
-	    kernel2 = 1,
-	    nr_kernels = 2,
-	} kernel;
-    T t_count;
-} dpu_arguments_t;
-
-typedef struct {
-    T t_count;
-} dpu_results_t;
-
 typedef struct {
     dpu_arguments_t *input_arguments;
     T* bufferA;
-    unsigned int input_size_dpu;
+    T* bufferB;
+    unsigned int input_size_dpu_8bytes;
 } cb_arguments_t;
 
 #ifndef ENERGY

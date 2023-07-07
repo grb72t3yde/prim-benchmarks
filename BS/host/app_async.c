@@ -288,10 +288,11 @@ int main(int argc, char **argv) {
 	printf("\n");
 
     double reclamation_time = get(&timer, 4, 1);
-    double other_time = get(&timer, 5, 1) - reclamation_time;
+    double total_time = get(&timer, 5, 1);
+    double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
 
     fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "BS(%u): Reclamation time: %f (ms); Other exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time);
+    fprintf(fp, "BS(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
 	#if ENERGY
 	double energy;
