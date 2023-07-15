@@ -1,9 +1,0 @@
-Vector addition (VA)
-
-Compilation instructions
-
-    make
-
-Execution instructions
-
-    ./va

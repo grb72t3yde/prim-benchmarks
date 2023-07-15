@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
 
     // Allocate DPUs and load binary
     start(&timer, 4, 0);
-    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_alloc_membo(NR_DPUS, NULL, &dpu_set));
     stop(&timer, 4);
     DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
@@ -248,7 +248,7 @@ int main(int argc, char **argv) {
     double reclamation_time = get(&timer, 4, 1);
     double total_time = get(&timer, 5, 1);
     double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
-    fp = fopen("../ame_output.txt", "a");
+    fp = fopen("../membo_output.txt", "a");
     fprintf(fp, "RED(%u): Reclamation time: %f (ms); Other exe. time %f (ms); Total time: %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
     #if ENERGY

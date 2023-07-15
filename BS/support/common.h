@@ -23,7 +23,7 @@
 #define DTYPE int64_t
 
 // Vector size
-#define INPUT_SIZE 2048576
+#define INPUT_SIZE 2097152
 
 typedef struct {
 	uint64_t input_size;

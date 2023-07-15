@@ -49,12 +49,10 @@ void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
     static uint32_t acc_nr_of_dpus = 0;
     uint32_t nr_of_dpus = 0;
 
-
-    printf("Before loaD PROGRAM\n");
     if (program)
-        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
     else
-        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
 
     // Load input matrix (step 1)
     for(unsigned int j = 0; j < M_ * m; j++){
@@ -173,13 +171,13 @@ int main(int argc, char **argv) {
             }
             if((active_dpus_before != active_dpus) && (!(first_round))){
                 DPU_ASSERT(dpu_free(dpu_set));
-                DPU_ASSERT(dpu_alloc_direct_reclaim(active_dpus, NULL, &dpu_set));
+                DPU_ASSERT(dpu_alloc_membo(active_dpus, NULL, &dpu_set));
                 DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
                 DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
                 printf("Allocated %d DPU(s)\n", nr_of_dpus);
             } else if (first_round){
                 start(&timer, 7, 0);
-                DPU_ASSERT(dpu_alloc_ranks_async(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
+                DPU_ASSERT(dpu_alloc_ranks_membo_dmp(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
                 stop(&timer, 7);
                 DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
                 printf("Allocated %d DPU(s)\n", nr_of_dpus);
@@ -309,7 +307,7 @@ int main(int argc, char **argv) {
     double reclamation_time = get(&timer, 7, 1);
     double total_time = get(&timer, 8, 1);
     double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
-    fp = fopen("../ame_output.txt", "a");
+    fp = fopen("../membo_output.txt", "a");
     fprintf(fp, "TRNS(%u): Reclamation time: %f (ms); Other exe. time %f (ms); Total time: %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
 
     fclose(fp);

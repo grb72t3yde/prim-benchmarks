@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
     cb_args.bufferB = bufferB;
 
     start(&timer, 4, 0);
-    DPU_ASSERT(dpu_alloc_ranks_async(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
+    DPU_ASSERT(dpu_alloc_ranks_membo_dmp(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
     stop(&timer, 4);
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
     printf("Allocated %d DPU(s)\n", nr_of_dpus);
@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
     double total_time = get(&timer, 5, 1);
     double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
 
-    fp = fopen("../ame_output.txt", "a");
+    fp = fopen("../membo_output.txt", "a");
     fprintf(fp, "VA(%u): Reclamation time: %f (ms); Other exe. time %f (ms); Total time: %f (ms)\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
     

@@ -46,9 +46,9 @@ void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
     uint32_t nr_of_dpus = 0;
 
     if (program)
-        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
     else
-        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
 
     // Copy input arrays
     DPU_FOREACH(dpu_set, dpu, i) {
@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
     cb_args.bufferA = bufferA;
 
     start(&timer, 5, 0);
-    DPU_ASSERT(dpu_alloc_ranks_async(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
+    DPU_ASSERT(dpu_alloc_ranks_membo_dmp(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
     stop(&timer, 5);
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
     printf("Allocated %d DPU(s)\n", nr_of_dpus);
@@ -281,7 +281,7 @@ int main(int argc, char **argv) {
     double total_time = get(&timer, 6, 1);
     double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
 
-    fp = fopen("../ame_output.txt", "a");
+    fp = fopen("../membo_output.txt", "a");
     fprintf(fp, "SEL(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
     fclose(fp);
 
