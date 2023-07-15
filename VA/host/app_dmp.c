@@ -48,9 +48,9 @@ void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
     uint32_t nr_of_dpus = 0;
 
     if (program)
-        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
     else
-        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
 
     // input arguments
     DPU_FOREACH(dpu_set, dpu, i) {
