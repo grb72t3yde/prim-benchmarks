@@ -37,9 +37,9 @@
 
 typedef struct Timer{
 
-    struct timeval startTime[5];
-    struct timeval stopTime[5];
-    double         time[5];
+    struct timeval startTime[7];
+    struct timeval stopTime[7];
+    double         time[7];
 
 }Timer;
 
@@ -57,3 +57,4 @@ void stop(Timer *timer, int i) {
 }
 
 void print(Timer *timer, int i, int REP) { printf("%f\t", timer->time[i] / (1000 * REP)); }
+double get(Timer *timer, int i, int REP) { return timer->time[i] / (1000 * REP); }

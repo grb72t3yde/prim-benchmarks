@@ -34,6 +34,76 @@ static DTYPE ASigma [1 << 26];
 static DTYPE minHost;
 static DTYPE minHostIdx;
 
+void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
+{
+    unsigned int i = 0;
+    struct dpu_set_t dpu;
+    cb_arguments_t *cb_arguments = (cb_arguments_t *)cb_args;
+	uint32_t mem_offset = 0;
+
+    dpu_arguments_t *input_arguments = cb_arguments->input_arguments;
+	uint32_t slice_per_dpu = input_arguments->slice_per_dpu;
+	const unsigned int query_length = input_arguments->query_length;
+
+    DTYPE *bufferQ = cb_arguments->bufferQ;
+    DTYPE *bufferTS = cb_arguments->bufferTS;
+    DTYPE *bufferAMean = cb_arguments->bufferAMean;
+    DTYPE *bufferASigma = cb_arguments->bufferASigma;
+    static struct dpu_program_t *program = NULL;
+    static uint32_t acc_nr_of_dpus = 0;
+    uint32_t nr_of_dpus = 0;
+
+    if (program)
+        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+    else
+        dpu_ame_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+
+    DPU_FOREACH(dpu_set, dpu) {
+        input_arguments->exclusion_zone = 0;
+
+        DPU_ASSERT(dpu_copy_to(dpu, "DPU_INPUT_ARGUMENTS", 0, (const void *) input_arguments, sizeof(*input_arguments)));
+        i++;
+    }
+
+    i = 0;
+    mem_offset = 0;
+    DPU_FOREACH(dpu_set, dpu, i)
+    {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferQ));
+    }
+
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, query_length * sizeof(DTYPE), DPU_XFER_ASYNC));
+
+    i = 0;
+    mem_offset += query_length * sizeof(DTYPE);
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferTS + slice_per_dpu * i));
+    }
+
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset,(slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_ASYNC));
+
+    mem_offset += ((slice_per_dpu + query_length) * sizeof(DTYPE));
+
+    i = 0;
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferAMean + slice_per_dpu * (i + acc_nr_of_dpus)));
+    }
+
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset, (slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_ASYNC));
+
+    i = 0;
+    mem_offset += ((slice_per_dpu + query_length) * sizeof(DTYPE));
+
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferASigma + slice_per_dpu * (i +acc_nr_of_dpus)));
+    }
+
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset, (slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_ASYNC));
+
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    acc_nr_of_dpus += nr_of_dpus;
+}
+
 // Create input arrays
 static DTYPE *create_test_file(unsigned int ts_elements, unsigned int query_elements) {
 	srand(0);
@@ -173,6 +243,14 @@ int main(int argc, char **argv) {
 	dpu_arguments_t input_arguments = {ts_size, query_length, query_mean, query_std, slice_per_dpu, 0, kernel};
 	uint32_t mem_offset;
 
+    // AME cb args
+    cb_arguments_t cb_args;
+    cb_args.input_arguments = &input_arguments;
+    cb_args.bufferTS = bufferTS;
+    cb_args.bufferQ = bufferQ;
+    cb_args.bufferAMean = bufferAMean;
+    cb_args.bufferASigma = bufferASigma;
+
 	dpu_result_t result;
 	result.minValue = INT32_MAX;
 	result.minIndex = 0;
@@ -181,7 +259,7 @@ int main(int argc, char **argv) {
 
 	// Allocate DPUs and load binary
     start(&timer, 5, 1);
-	DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_alloc_ranks_async(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
     stop(&timer, 5);
 	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
 	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
@@ -192,49 +270,51 @@ int main(int argc, char **argv) {
 			start(&timer, 1, rep - p.n_warmup);
 		uint32_t i = 0;
 
-		DPU_FOREACH(dpu_set, dpu) {
-			input_arguments.exclusion_zone = 0;
+        if (rep != 0) {
+            DPU_FOREACH(dpu_set, dpu) {
+                input_arguments.exclusion_zone = 0;
 
-			DPU_ASSERT(dpu_copy_to(dpu, "DPU_INPUT_ARGUMENTS", 0, (const void *) &input_arguments, sizeof(input_arguments)));
-			i++;
-		}
+                DPU_ASSERT(dpu_copy_to(dpu, "DPU_INPUT_ARGUMENTS", 0, (const void *) &input_arguments, sizeof(input_arguments)));
+                i++;
+            }
 
-		i = 0;
-		mem_offset = 0;
-		DPU_FOREACH(dpu_set, dpu, i)
-		{
-			DPU_ASSERT(dpu_prepare_xfer(dpu, bufferQ));
-		}
+            i = 0;
+            mem_offset = 0;
+            DPU_FOREACH(dpu_set, dpu, i)
+            {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferQ));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, query_length * sizeof(DTYPE), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, query_length * sizeof(DTYPE), DPU_XFER_DEFAULT));
 
-		i = 0;
+            i = 0;
 
-		mem_offset += query_length * sizeof(DTYPE);
-		DPU_FOREACH(dpu_set, dpu, i) {
-			DPU_ASSERT(dpu_prepare_xfer(dpu, bufferTS + slice_per_dpu * i));
-		}
+            mem_offset += query_length * sizeof(DTYPE);
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferTS + slice_per_dpu * i));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset,(slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset,(slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_DEFAULT));
 
-		mem_offset += ((slice_per_dpu + query_length) * sizeof(DTYPE));
+            mem_offset += ((slice_per_dpu + query_length) * sizeof(DTYPE));
 
-		i = 0;
-		DPU_FOREACH(dpu_set, dpu, i) {
-			DPU_ASSERT(dpu_prepare_xfer(dpu, bufferAMean + slice_per_dpu * i));
-		}
+            i = 0;
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferAMean + slice_per_dpu * i));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset, (slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset, (slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_DEFAULT));
 
-		i = 0;
+            i = 0;
 
-		mem_offset += ((slice_per_dpu + query_length) * sizeof(DTYPE));
+            mem_offset += ((slice_per_dpu + query_length) * sizeof(DTYPE));
 
-		DPU_FOREACH(dpu_set, dpu, i) {
-			DPU_ASSERT(dpu_prepare_xfer(dpu, bufferASigma + slice_per_dpu * i));
-		}
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferASigma + slice_per_dpu * i));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset, (slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, mem_offset, (slice_per_dpu + query_length)*sizeof(DTYPE), DPU_XFER_DEFAULT));
+        }
 
 		if (rep >= p.n_warmup)
 			stop(&timer, 1);

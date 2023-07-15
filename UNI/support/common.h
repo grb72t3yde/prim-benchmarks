@@ -4,6 +4,7 @@
 // Data type
 #define T int64_t
 #define REGS (BLOCK_SIZE >> 3) // 64 bits
+#define NR_DPUS_PER_RANK 64
 
 // Structures used by both the host and the dpu to communicate information
 typedef struct {
@@ -32,10 +33,17 @@ typedef struct {
 
 typedef struct{unsigned int x; unsigned int y; unsigned int z;} uint3;
 
+typedef struct {
+    dpu_arguments_t *input_arguments;
+    T* bufferA;
+    unsigned int input_size_dpu;
+} cb_arguments_t;
+
 #ifndef ENERGY
 #define ENERGY 0
 #endif
 #define PRINT 0
+#define VERIFY_WITH_CPU 0
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

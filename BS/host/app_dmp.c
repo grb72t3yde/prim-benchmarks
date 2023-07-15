@@ -24,6 +24,52 @@
 // Define the DPU Binary path as DPU_BINARY here
 #define DPU_BINARY "./bin/bs_dpu"
 
+void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
+{
+    unsigned int i = 0;
+    struct dpu_set_t dpu;
+    cb_arguments_t *cb_arguments = (cb_arguments_t *)cb_args;
+    dpu_arguments_t *input_arguments = cb_arguments->input_arguments;
+
+    uint64_t input_size = cb_arguments->input_size;
+    uint64_t slice_per_dpu = cb_arguments->slice_per_dpu;
+    DTYPE *input = cb_arguments->input;
+    DTYPE *querys = cb_arguments->querys;
+    static struct dpu_program_t *program = NULL;
+    static uint32_t acc_nr_of_dpus = 0;
+    uint32_t nr_of_dpus = 0;
+
+    if (program)
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+    else
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+
+    // Copy input arrays
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, input_arguments));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(*input_arguments), DPU_XFER_ASYNC));
+
+    DPU_FOREACH(dpu_set, dpu, i)
+    {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, input));
+    }
+
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size * sizeof(DTYPE), DPU_XFER_ASYNC));
+
+    i = 0;
+
+    DPU_FOREACH(dpu_set, dpu, i)
+    {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, querys + slice_per_dpu * (i + acc_nr_of_dpus)));
+    }
+
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size * sizeof(DTYPE), slice_per_dpu * sizeof(DTYPE), DPU_XFER_ASYNC));
+    
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    acc_nr_of_dpus += nr_of_dpus;
+}
+
 // Create input arrays
 void create_test_file(DTYPE * input, DTYPE * querys, uint64_t  nr_elements, uint64_t nr_querys) {
 
@@ -70,7 +116,7 @@ int main(int argc, char **argv) {
 
 	struct Params p = input_params(argc, argv);
 	struct dpu_set_t dpu_set, dpu;
-	uint32_t nr_of_dpus = NR_DPUS;
+	uint32_t nr_of_dpus;
 	uint64_t input_size = INPUT_SIZE;
 	uint64_t num_querys = p.num_querys;
 	DTYPE result_host = -1;
@@ -80,8 +126,13 @@ int main(int argc, char **argv) {
 	// Create the timer
 	Timer timer;
 
-	
-    start(&timer, 5, 0);
+	start(&timer, 5, 0);
+	// Allocate DPUs and load binary
+	//DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+	//DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+
+    nr_of_dpus = NR_DPUS;
+
 	#if ENERGY
 	struct dpu_probe_t probe;
 	DPU_ASSERT(dpu_probe_init("energy_probe", &probe));
@@ -98,7 +149,7 @@ int main(int argc, char **argv) {
 
 	// Create an input file with arbitrary data
 	create_test_file(input, querys, input_size, num_querys);
-
+    
 	// Compute host solution
 	start(&timer, 0, 0);
 #if VERIFY_WITH_CPU
@@ -110,12 +161,22 @@ int main(int argc, char **argv) {
 	uint64_t slice_per_dpu          = num_querys / nr_of_dpus;
 	dpu_arguments_t input_arguments = {input_size, slice_per_dpu, 0};
 
-	// Allocate DPUs and load binary
+    // AME cb args
+    cb_arguments_t cb_args;
+    cb_args.input_arguments = &input_arguments;
+    cb_args.slice_per_dpu = slice_per_dpu;
+    cb_args.input_size = input_size;
+    cb_args.input = input;
+    cb_args.querys = querys;
+
 	start(&timer, 4, 0);
-	DPU_ASSERT(dpu_alloc_membo(NR_DPUS, NULL, &dpu_set));
+	//DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_alloc_ranks_membo_dmp(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
     stop(&timer, 4);
-	DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-	DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    printf("Allocated %d DPU(s)\n", nr_of_dpus);
+    //printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
 
 	for (unsigned int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 		// Perform input transfers
@@ -124,30 +185,33 @@ int main(int argc, char **argv) {
 		if (rep >= p.n_warmup)
 		start(&timer, 1, rep - p.n_warmup);
 
-		DPU_FOREACH(dpu_set, dpu, i)
-		{
-			DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments));
-		}
+        if (rep != 0) {
+            printf("rep is %u\n", rep);
+            DPU_FOREACH(dpu_set, dpu, i)
+            {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments), DPU_XFER_DEFAULT));
 
-		i = 0;
+            i = 0;
 
-		DPU_FOREACH(dpu_set, dpu, i)
-		{
-			DPU_ASSERT(dpu_prepare_xfer(dpu, input));
-		}
+            DPU_FOREACH(dpu_set, dpu, i)
+            {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, input));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size * sizeof(DTYPE), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size * sizeof(DTYPE), DPU_XFER_DEFAULT));
 
-		i = 0;
+            i = 0;
 
-		DPU_FOREACH(dpu_set, dpu, i)
-		{
-			DPU_ASSERT(dpu_prepare_xfer(dpu, querys + slice_per_dpu * i));
-		}
+            DPU_FOREACH(dpu_set, dpu, i)
+            {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, querys + slice_per_dpu * i));
+            }
 
-		DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size * sizeof(DTYPE), slice_per_dpu * sizeof(DTYPE), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, input_size * sizeof(DTYPE), slice_per_dpu * sizeof(DTYPE), DPU_XFER_DEFAULT));
+        }
 
 		if (rep >= p.n_warmup)
 		stop(&timer, 1);
@@ -210,6 +274,7 @@ int main(int argc, char **argv) {
 		stop(&timer, 3);
 	}
     stop(&timer, 5);
+
 	// Print timing results
 	printf("CPU Version Time (ms): ");
 	print(&timer, 0, p.n_reps);
@@ -236,7 +301,7 @@ int main(int argc, char **argv) {
 
     int status = 1;
 #if VERIFY_WITH_CPU
-	int status = (result_dpu == result_host);
+	status = (result_dpu == result_host);
 	if (status) {
 		printf("[" ANSI_COLOR_GREEN "OK" ANSI_COLOR_RESET "] results are equal\n");
 	} else {

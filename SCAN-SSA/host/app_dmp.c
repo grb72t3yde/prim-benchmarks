@@ -1,6 +1,6 @@
 /**
 * app.c
-* SCAN-RSS Host Application Source File
+* SCAN-SSA Host Application Source File
 *
 */
 #include <stdio.h>
@@ -30,6 +30,41 @@
 static T* A;
 static T* C;
 static T* C2;
+
+void reclamation_cb(struct dpu_set_t dpu_set, void *cb_args)
+{
+    unsigned int i = 0;
+    struct dpu_set_t dpu;
+    cb_arguments_t *cb_arguments = (cb_arguments_t *)cb_args;
+
+    dpu_arguments_t *input_arguments = cb_arguments->input_arguments;
+    const unsigned int input_size_dpu = cb_arguments->input_size_dpu;
+
+    T *bufferA = cb_arguments->bufferA;
+    static struct dpu_program_t *program = NULL;
+    static uint32_t acc_nr_of_dpus = 0;
+    uint32_t nr_of_dpus = 0;
+
+    if (program)
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, program, &program);
+    else
+        dpu_membo_load_with_program(dpu_set, DPU_BINARY, NULL, NULL, &program);
+
+    // Copy input arrays
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, input_arguments));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(*input_arguments), DPU_XFER_ASYNC));
+
+    DPU_FOREACH(dpu_set, dpu, i) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, bufferA + input_size_dpu * (i + acc_nr_of_dpus)));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu * sizeof(T), DPU_XFER_ASYNC));
+
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    acc_nr_of_dpus += nr_of_dpus;
+}
+
 
 // Create input arrays
 static void read_input(T* A, unsigned int nr_elements, unsigned int nr_elements_round) {
@@ -68,6 +103,7 @@ int main(int argc, char **argv) {
     Timer timer;
 
     start(&timer, 8, 0);
+    // Allocate DPUs and load binary
     
     unsigned int i = 0;
     T accum = 0;
@@ -87,11 +123,20 @@ int main(int argc, char **argv) {
     // Create an input file with arbitrary data
     read_input(A, input_size, input_size_dpu_round * nr_of_dpus);
 
-    // Allocate DPUs and load binary
+    // Input arguments
+    const unsigned int input_size_dpu = input_size_dpu_round;
+    unsigned int kernel = 0;
+    dpu_arguments_t input_arguments = {input_size_dpu * sizeof(T), kernel, 0};
+
+    // AME cb args
+    cb_arguments_t cb_args;
+    cb_args.input_arguments = &input_arguments;
+    cb_args.input_size_dpu = input_size_dpu;
+    cb_args.bufferA = bufferA;
+
     start(&timer, 7, 0);
-    DPU_ASSERT(dpu_alloc_membo(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_alloc_ranks_membo_dmp(nr_of_dpus / NR_DPUS_PER_RANK, NULL, &dpu_set, &reclamation_cb, (void *)&cb_args));
     stop(&timer, 7);
-    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
     printf("Allocated %d DPU(s)\n", nr_of_dpus);
 
@@ -112,20 +157,22 @@ int main(int argc, char **argv) {
         printf("Load input data\n");
         if(rep >= p.n_warmup)
             start(&timer, 1, rep - p.n_warmup);
-        // Input arguments
-        const unsigned int input_size_dpu = input_size_dpu_round;
-        unsigned int kernel = 0;
-        dpu_arguments_t input_arguments = {input_size_dpu * sizeof(T), kernel, 0};
-        // Copy input arrays
-        i = 0;
-        DPU_FOREACH(dpu_set, dpu, i) {
-            DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments));
+        if (rep != 0) {
+            // Input arguments
+            const unsigned int input_size_dpu = input_size_dpu_round;
+            unsigned int kernel = 0;
+            dpu_arguments_t input_arguments = {input_size_dpu * sizeof(T), kernel, 0};
+            // Copy input arrays
+            i = 0;
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, &input_arguments));
+            }
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments), DPU_XFER_DEFAULT));
+            DPU_FOREACH(dpu_set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, bufferA + input_size_dpu * i));
+            }
+            DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu * sizeof(T), DPU_XFER_DEFAULT));
         }
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments), DPU_XFER_DEFAULT));
-        DPU_FOREACH(dpu_set, dpu, i) {
-            DPU_ASSERT(dpu_prepare_xfer(dpu, bufferA + input_size_dpu * i));
-        }
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu * sizeof(T), DPU_XFER_DEFAULT));
         if(rep >= p.n_warmup)
             stop(&timer, 1);
 
@@ -163,11 +210,14 @@ int main(int argc, char **argv) {
         T* results_scan = malloc(nr_of_dpus * sizeof(T));
         i = 0;
         accum = 0;
-		
+
         if(rep >= p.n_warmup)
             start(&timer, 3, rep - p.n_warmup);
         // PARALLEL RETRIEVE TRANSFER
         dpu_results_t* results_retrieve[nr_of_dpus];
+
+        if(rep >= p.n_warmup)
+            start(&timer, 3, rep - p.n_warmup);
 
         DPU_FOREACH(dpu_set, dpu, i) {
             results_retrieve[i] = (dpu_results_t*)malloc(NR_TASKLETS * sizeof(dpu_results_t));
@@ -178,7 +228,7 @@ int main(int argc, char **argv) {
         DPU_FOREACH(dpu_set, dpu, i) {
             // Retrieve tasklet timings
             for (unsigned int each_tasklet = 0; each_tasklet < NR_TASKLETS; each_tasklet++) {
-                if(each_tasklet == 0)
+                if(each_tasklet == NR_TASKLETS - 1)
                     results[i].t_count = results_retrieve[i][each_tasklet].t_count;
             }
             free(results_retrieve[i]);
@@ -191,7 +241,7 @@ int main(int argc, char **argv) {
 #endif
         }
 
-        // Arguments for scan kernel (2nd kernel)
+        // Arguments for add kernel (2nd kernel)
         kernel = 1;
         dpu_arguments_t input_arguments_2[NR_DPUS];
         for(i=0; i<nr_of_dpus; i++) {
@@ -221,6 +271,7 @@ int main(int argc, char **argv) {
             DPU_ASSERT(dpu_probe_stop(&probe));
             #endif
         }
+
 #if PRINT
         {
             unsigned int each_dpu = 0;
@@ -255,11 +306,11 @@ int main(int argc, char **argv) {
     print(&timer, 0, p.n_reps);
     printf("CPU-DPU ");
     print(&timer, 1, p.n_reps);
-    printf("DPU Kernel Reduction ");
+    printf("DPU Kernel Scan ");
     print(&timer, 2, p.n_reps);
     printf("Inter-DPU (Scan) ");
     print(&timer, 3, p.n_reps);
-    printf("DPU Kernel Scan ");
+    printf("DPU Kernel Add ");
     print(&timer, 4, p.n_reps);
     printf("DPU-CPU ");
     print(&timer, 5, p.n_reps);
@@ -268,9 +319,9 @@ int main(int argc, char **argv) {
     double total_time = get(&timer, 8, 1);
     double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
     fp = fopen("../membo_output.txt", "a");
-    fprintf(fp, "SCAN-RSS(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
-    fclose(fp);
+    fprintf(fp, "SCAN-SSA(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
 
+    fclose(fp);
     #if ENERGY
     double energy;
     DPU_ASSERT(dpu_probe_get(&probe, DPU_ENERGY, DPU_AVERAGE, &energy));
@@ -289,12 +340,12 @@ int main(int argc, char **argv) {
 #endif
         }
     }
-#endif
     if (status) {
         printf("[" ANSI_COLOR_GREEN "OK" ANSI_COLOR_RESET "] Outputs are equal\n");
     } else {
         printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] Outputs differ!\n");
     }
+#endif
 
     // Deallocation
     free(A);

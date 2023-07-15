@@ -10,6 +10,7 @@
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 #define BL BLOCK_SIZE_LOG2
 #endif
+#define NR_DPUS_PER_RANK 64
 
 // Data type
 #define T int64_t
@@ -26,10 +27,19 @@ typedef struct {
 	} kernel;
 } dpu_arguments_t;
 
+typedef struct {
+    T* A_backup;
+    unsigned int N_;
+    unsigned int n;
+    unsigned int M_;
+    unsigned int m;
+} cb_arguments_t;
+
 #ifndef ENERGY
 #define ENERGY 0
 #endif
 #define PRINT 0 
+#define VERIFY_WITH_CPU 0
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

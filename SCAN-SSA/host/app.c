@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
     struct Params p = input_params(argc, argv);
 
     struct dpu_set_t dpu_set, dpu;
-    uint32_t nr_of_dpus;
+    uint32_t nr_of_dpus = NR_DPUS;
     FILE *fp;
     
 #if ENERGY
@@ -69,13 +69,7 @@ int main(int argc, char **argv) {
 
     start(&timer, 8, 0);
     // Allocate DPUs and load binary
-    start(&timer, 7, 0);
-    DPU_ASSERT(dpu_alloc_direct_reclaim(NR_DPUS, NULL, &dpu_set));
-    stop(&timer, 7);
-    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
-    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
-    printf("Allocated %d DPU(s)\n", nr_of_dpus);
-
+    
     unsigned int i = 0;
     T accum = 0;
 
@@ -94,6 +88,12 @@ int main(int argc, char **argv) {
     // Create an input file with arbitrary data
     read_input(A, input_size, input_size_dpu_round * nr_of_dpus);
 
+    start(&timer, 7, 0);
+    DPU_ASSERT(dpu_alloc_membo(NR_DPUS, NULL, &dpu_set));
+    stop(&timer, 7);
+    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+    printf("Allocated %d DPU(s)\n", nr_of_dpus);
 
     printf("NR_TASKLETS\t%d\tBL\t%d\n", NR_TASKLETS, BL);
 
@@ -103,7 +103,9 @@ int main(int argc, char **argv) {
         // Compute output on CPU (performance comparison and verification purposes)
         if(rep >= p.n_warmup)
             start(&timer, 0, rep - p.n_warmup);
+#if VERIFY_WITH_CPU
         scan_host(C, A, input_size);
+#endif
         if(rep >= p.n_warmup)
             stop(&timer, 0);
 
@@ -266,8 +268,12 @@ int main(int argc, char **argv) {
     printf("DPU-CPU ");
     print(&timer, 5, p.n_reps);
 
-    fp = fopen("../ame_output.txt", "a");
-    fprintf(fp, "SCAN-SSA(%u): Reclamation time: %f (ms); Total exe. time %f (ms)\n", nr_of_dpus, get(&timer, 7, 1), get(&timer, 8, 1));
+    double reclamation_time = get(&timer, 7, 1);
+    double total_time = get(&timer, 8, 1);
+    double other_time = total_time - reclamation_time - get(&timer, 1, p.n_reps);
+    fp = fopen("../membo_output.txt", "a");
+    fprintf(fp, "SCAN-SSA(%u): Reclamation time: %f (ms); Other exe. time: %f (ms); Total time: %f\n", nr_of_dpus, reclamation_time, other_time, total_time);
+
     fclose(fp);
     #if ENERGY
     double energy;
@@ -278,6 +284,7 @@ int main(int argc, char **argv) {
 
     // Check output
     bool status = true;
+#if VERIFY_WITH_CPU
     for (i = 0; i < input_size; i++) {
         if(C[i] != bufferC[i]){ 
             status = false;
@@ -291,6 +298,7 @@ int main(int argc, char **argv) {
     } else {
         printf("[" ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET "] Outputs differ!\n");
     }
+#endif
 
     // Deallocation
     free(A);
